@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><meta name="robots" content="noindex">
+<title>Log Meal</title>
+<style>
+body{font-family:-apple-system,system-ui,sans-serif;max-width:32rem;margin:2rem auto;padding:0 1rem;color:#111}
+a.btn,button{display:block;width:100%;box-sizing:border-box;text-align:center;font-size:1.25rem;padding:1rem;margin:.75rem 0;border-radius:.75rem;border:0;text-decoration:none}
+a.btn{background:#0a84ff;color:#fff;font-weight:600} button{background:#e5e5ea;color:#111}
+li{margin:.25rem 0} .err{color:#c00} small{color:#666}
+</style></head><body>
+<h1>Log Meal</h1>
+<div id="out">Loading…</div>
+<script>
+// Meal JSON travels in the URL fragment (#b64=<base64url> or #text=<urlencoded>), never sent to the server.
+var SHORTCUT = "Log Meal"; // hard-coded: this page can only run this shortcut
+function b64urlDecode(s){
+  s = s.replace(/-/g,"+").replace(/_/g,"/"); while (s.length % 4) s += "=";
+  var bin = atob(s), bytes = new Uint8Array(bin.length);
+  for (var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+function parseFragment(hash){
+  var h = (hash||"").replace(/^#/,""), p = {};
+  h.split("&").forEach(function(kv){ var i=kv.indexOf("="); if(i>0) p[kv.slice(0,i)] = kv.slice(i+1); });
+  var json = p.b64 ? b64urlDecode(p.b64) : (p.text ? decodeURIComponent(p.text) : null);
+  if (!json) throw new Error("No meal data in this link.");
+  var obj = JSON.parse(json);
+  if (!obj || !Array.isArray(obj.items) || !obj.items.length) throw new Error("Meal data has no items.");
+  return {json: JSON.stringify(obj), obj: obj};
+}
+function shortcutUrl(json){
+  return "shortcuts://run-shortcut?name=" + encodeURIComponent(SHORTCUT) + "&input=text&text=" + encodeURIComponent(json);
+}
+if (typeof module !== "undefined") { module.exports = {parseFragment: parseFragment, shortcutUrl: shortcutUrl, b64urlDecode: b64urlDecode}; }
+else {
+  var out = document.getElementById("out");
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+  try {
+    var r = parseFragment(location.hash), url = shortcutUrl(r.json), kcal = 0;
+    var list = r.obj.items.map(function(it){ var e=(it.nutrients&&it.nutrients.energy)||0; kcal+=e; return "<li>"+esc(it.name)+" — "+Math.round(e)+" kcal</li>"; }).join("");
+    out.innerHTML = "<ul>"+list+"</ul><p><b>Total: "+Math.round(kcal)+" kcal</b></p>" +
+      '<a class="btn" id="go">Tap to log in MacroFactor</a>' +
+      '<button id="copy">Copy meal (backup: then run “Log Meal”)</button><small id="msg"></small>';
+    document.getElementById("go").href = url;
+    document.getElementById("copy").onclick = function(){
+      navigator.clipboard.writeText(r.json).then(function(){ document.getElementById("msg").textContent="Copied. Now run Log Meal from Shortcuts or Siri."; },
+        function(){ document.getElementById("msg").textContent="Couldn't copy automatically."; });
+    };
+    setTimeout(function(){ location.href = url; }, 150); // auto-open; button is the fallback
+  } catch (e) { out.innerHTML = '<p class="err">'+esc(e.message)+'</p>'; }
+}
+</script>
+</body></html>
